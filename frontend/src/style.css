@@ -110,6 +110,46 @@ textarea {
   font-size: 13px;
 }
 
+.proxy-progress {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  color: #34495e;
+  font-size: 13px;
+}
+
+.proxy-progress button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.log-panel {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #e5edf3;
+  border-radius: 6px;
+  background: #f8fafc;
+  margin-top: 10px;
+  padding: 8px;
+}
+
+.log-line {
+  display: grid;
+  gap: 3px;
+  color: #34495e;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.log-line time {
+  color: #788b9d;
+  font-size: 11px;
+}
+
 .proxy-list {
   display: grid;
   gap: 6px;

@@ -1,5 +1,8 @@
 import base64
 import socket
+import threading
+import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -9,7 +12,9 @@ from .db import connect
 router = APIRouter(prefix="/api/proxies", tags=["proxies"])
 PROXY_TEST_HOST = "login.microsoftonline.com"
 PROXY_TEST_PORT = 443
-PROXY_TIMEOUT_SECONDS = 8
+PROXY_TIMEOUT_SECONDS = 5
+validation_jobs: dict[str, dict] = {}
+validation_jobs_lock = threading.Lock()
 
 
 class ImportProxiesRequest(BaseModel):
@@ -158,6 +163,20 @@ def set_proxy_status(proxy_id: int, status: str) -> None:
         conn.execute("UPDATE proxies SET status = ? WHERE id = ?", (status, proxy_id))
 
 
+def append_job_log(job_id: str, message: str) -> None:
+    with validation_jobs_lock:
+        job = validation_jobs.get(job_id)
+        if not job:
+            return
+        job["logs"].append(
+            {
+                "time": datetime.utcnow().isoformat(timespec="seconds"),
+                "message": message,
+            }
+        )
+        job["logs"] = job["logs"][-200:]
+
+
 @router.post("/{proxy_id}/validate")
 def validate_proxy(proxy_id: int):
     with connect() as conn:
@@ -178,29 +197,86 @@ def validate_proxy(proxy_id: int):
     return {"id": proxy_id, "ok": ok, "status": "active" if ok else "invalid", "message": message}
 
 
+def run_proxy_validation_job(job_id: str) -> None:
+    try:
+        with connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, type, host, port, username, password
+                FROM proxies
+                WHERE status = 'active'
+                ORDER BY id DESC
+                """
+            ).fetchall()
+
+        with validation_jobs_lock:
+            job = validation_jobs[job_id]
+            job["total"] = len(rows)
+            job["status"] = "running"
+
+        checked = 0
+        valid = 0
+        invalid = 0
+        append_job_log(job_id, f"开始验证 {len(rows)} 个 active 代理")
+        for row in rows:
+            checked += 1
+            proxy = dict(row)
+            label = f"{proxy['host']}:{proxy['port']}"
+            append_job_log(job_id, f"[{checked}/{len(rows)}] 正在验证 {label}")
+            ok, message = validate_proxy_connect(proxy)
+            set_proxy_status(proxy["id"], "active" if ok else "invalid")
+            if ok:
+                valid += 1
+                append_job_log(job_id, f"{label} 可用：{message}")
+            else:
+                invalid += 1
+                append_job_log(job_id, f"{label} 不可用：{message}")
+
+            with validation_jobs_lock:
+                job = validation_jobs[job_id]
+                job["checked"] = checked
+                job["valid"] = valid
+                job["invalid"] = invalid
+
+        with validation_jobs_lock:
+            job = validation_jobs[job_id]
+            job["status"] = "completed"
+            job["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+        append_job_log(job_id, f"验证完成：可用 {valid}，不可用 {invalid}")
+    except Exception as exc:
+        with validation_jobs_lock:
+            job = validation_jobs.get(job_id)
+            if job:
+                job["status"] = "failed"
+                job["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+        append_job_log(job_id, f"验证任务失败：{exc}")
+
+
 @router.post("/validate-active")
 def validate_active_proxies():
-    with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, type, host, port, username, password
-            FROM proxies
-            WHERE status = 'active'
-            ORDER BY id DESC
-            """
-        ).fetchall()
+    job_id = uuid.uuid4().hex
+    with validation_jobs_lock:
+        validation_jobs[job_id] = {
+            "id": job_id,
+            "status": "queued",
+            "total": 0,
+            "checked": 0,
+            "valid": 0,
+            "invalid": 0,
+            "logs": [],
+            "created_at": datetime.utcnow().isoformat(timespec="seconds"),
+            "finished_at": None,
+        }
 
-    checked = 0
-    valid = 0
-    invalid = 0
-    for row in rows:
-        checked += 1
-        proxy = dict(row)
-        ok, _ = validate_proxy_connect(proxy)
-        set_proxy_status(proxy["id"], "active" if ok else "invalid")
-        if ok:
-            valid += 1
-        else:
-            invalid += 1
+    thread = threading.Thread(target=run_proxy_validation_job, args=(job_id,), daemon=True)
+    thread.start()
+    return validation_jobs[job_id]
 
-    return {"checked": checked, "valid": valid, "invalid": invalid}
+
+@router.get("/validation-jobs/{job_id}")
+def get_validation_job(job_id: str):
+    with validation_jobs_lock:
+        job = validation_jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Validation job not found")
+        return dict(job)

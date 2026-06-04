@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
+  getProxyValidationJob,
   importAccounts,
   importProxies,
   listAccounts,
@@ -26,6 +27,9 @@ const selectedFolderId = ref(null)
 const loading = ref(false)
 const notice = ref('')
 const error = ref('')
+const proxyValidationJob = ref(null)
+const proxyLogs = ref([])
+const proxyPolling = ref(false)
 
 const selectedAccount = computed(() =>
   accounts.value.find((account) => account.id === selectedAccountId.value)
@@ -74,14 +78,46 @@ async function submitProxyImport() {
 }
 
 async function validateProxies() {
-  const result = await run(async () => {
-    const validation = await validateActiveProxies()
-    await refreshProxies()
-    return validation
-  }, '代理验证完成')
-  if (result) {
-    notice.value = `代理验证完成：可用 ${result.valid}，不可用 ${result.invalid}`
+  const job = await run(() => validateActiveProxies(), '代理验证已开始')
+  if (!job?.id) return
+
+  proxyValidationJob.value = job
+  proxyLogs.value = job.logs || []
+  proxyPolling.value = true
+  pollProxyValidation(job.id)
+}
+
+async function pollProxyValidation(jobId) {
+  while (proxyPolling.value) {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      const job = await getProxyValidationJob(jobId)
+      proxyValidationJob.value = job
+      proxyLogs.value = job.logs || []
+      if (job.status === 'completed' || job.status === 'failed') {
+        proxyPolling.value = false
+        notice.value =
+          job.status === 'completed'
+            ? `代理验证完成：可用 ${job.valid}，不可用 ${job.invalid}`
+            : '代理验证任务失败，请查看日志'
+        await refreshProxies()
+      }
+    } catch (err) {
+      proxyPolling.value = false
+      error.value = err.message
+    }
   }
+}
+
+async function refreshProxyValidation() {
+  if (!proxyValidationJob.value?.id) return
+  await run(async () => {
+    const job = await getProxyValidationJob(proxyValidationJob.value.id)
+    proxyValidationJob.value = job
+    proxyLogs.value = job.logs || []
+    await refreshProxies()
+    return job
+  }, '日志已刷新')
 }
 
 async function authorize(account) {
@@ -172,8 +208,22 @@ onMounted(async () => {
         <textarea v-model="proxyText" spellcheck="false" />
         <div class="proxy-actions">
           <button :disabled="loading" @click="submitProxyImport">导入代理</button>
-          <button :disabled="loading" @click="validateProxies">验证代理</button>
+          <button :disabled="loading || proxyPolling" @click="validateProxies">验证代理</button>
           <span>{{ proxies.length }} 个代理</span>
+        </div>
+        <div v-if="proxyValidationJob" class="proxy-progress">
+          <span>{{ proxyValidationJob.status }}</span>
+          <span>
+            {{ proxyValidationJob.checked }}/{{ proxyValidationJob.total }}
+            可用 {{ proxyValidationJob.valid }} / 不可用 {{ proxyValidationJob.invalid }}
+          </span>
+          <button :disabled="loading" @click="refreshProxyValidation">刷新日志</button>
+        </div>
+        <div v-if="proxyLogs.length" class="log-panel">
+          <div v-for="(log, index) in proxyLogs" :key="index" class="log-line">
+            <time>{{ log.time }}</time>
+            <span>{{ log.message }}</span>
+          </div>
         </div>
         <div class="proxy-list">
           <div v-for="proxy in proxies.slice(0, 5)" :key="proxy.id" class="proxy-row">

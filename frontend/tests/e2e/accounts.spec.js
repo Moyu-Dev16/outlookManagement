@@ -41,7 +41,29 @@ test.beforeEach(async ({ page }) => {
 
   await page.route('**/api/proxies/validate-active', async (route) => {
     await route.fulfill({
-      json: { checked: 0, valid: 0, invalid: 0 },
+      json: {
+        id: 'proxy-validation-test',
+        status: 'queued',
+        total: 0,
+        checked: 0,
+        valid: 0,
+        invalid: 0,
+        logs: [],
+      },
+    })
+  })
+
+  await page.route('**/api/proxies/validation-jobs/proxy-validation-test', async (route) => {
+    await route.fulfill({
+      json: {
+        id: 'proxy-validation-test',
+        status: 'completed',
+        total: 0,
+        checked: 0,
+        valid: 0,
+        invalid: 0,
+        logs: [{ time: '2026-06-05T00:00:00', message: '验证完成：可用 0，不可用 0' }],
+      },
     })
   })
 

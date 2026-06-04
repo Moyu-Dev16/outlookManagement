@@ -38,6 +38,10 @@ export function validateActiveProxies() {
   return request('/api/proxies/validate-active', { method: 'POST' })
 }
 
+export function getProxyValidationJob(jobId) {
+  return request(`/api/proxies/validation-jobs/${jobId}`)
+}
+
 export function startOAuth(accountId) {
   return request(`/api/oauth/microsoft/start/${accountId}`)
 }
