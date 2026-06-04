@@ -28,6 +28,13 @@ npm.cmd run dev
 
 Open the Vite URL shown in the terminal.
 
+Run frontend end-to-end tests:
+
+```powershell
+cd frontend
+npm.cmd run test:e2e
+```
+
 ## Import Format
 
 ```text
