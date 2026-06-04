@@ -4,9 +4,9 @@
 
 body {
   margin: 0;
-  min-width: 1100px;
+  min-width: 1180px;
   color: #17202a;
-  background: #f4f7f9;
+  background: #eef3f7;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
@@ -23,6 +23,7 @@ button {
   min-height: 36px;
   padding: 0 14px;
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 button:hover {
@@ -42,14 +43,16 @@ button:disabled {
 
 .shell {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 360px 1fr;
   min-height: 100vh;
 }
 
 .sidebar {
   border-right: 1px solid #d9e2ea;
-  background: #ffffff;
+  background: #fbfdff;
   padding: 22px;
+  max-height: 100vh;
+  overflow: auto;
 }
 
 .brand {
@@ -191,7 +194,7 @@ textarea {
 }
 
 .workspace {
-  padding: 24px;
+  padding: 24px 28px;
 }
 
 .topbar {
@@ -214,7 +217,142 @@ textarea {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.management-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(460px, 1.15fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.management-section {
+  min-width: 0;
+  border: 1px solid #d9e2ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid #e5edf3;
+  padding: 12px 14px;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.section-head span {
+  color: #627386;
+  font-size: 13px;
+}
+
+.table-wrap {
+  max-height: 260px;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 13px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #edf2f6;
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  color: #526579;
+  font-weight: 700;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover,
+tbody tr.selected {
+  background: #eef7ff;
+}
+
+.strong-cell {
+  color: #17202a;
+  font-weight: 700;
+}
+
+.mono-cell {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  min-width: 180px;
+  white-space: nowrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #edf2f6;
+  color: #526579;
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-pill[data-status="active"],
+.status-pill[data-status="authorized"],
+.status-pill[data-status="imap_synced"] {
+  background: #e7f6ef;
+  color: #16613d;
+}
+
+.status-pill[data-status="invalid"],
+.status-pill[data-status="auth_failed"],
+.status-pill[data-status="auth_expired"],
+.status-pill[data-status="imap_failed"] {
+  background: #fdebec;
+  color: #99222d;
+}
+
+.status-pill[data-status="not_authorized"],
+.status-pill[data-status="reserved"],
+.status-pill[data-status="authorizing"] {
+  background: #fff3d8;
+  color: #8a5b00;
+}
+
+.row-actions {
+  width: 76px;
+  text-align: right;
+}
+
+.row-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  color: #99222d;
+}
+
+.empty-cell {
+  color: #627386;
+  text-align: center;
+  padding: 22px;
 }
 
 .notice,

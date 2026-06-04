@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
+  deleteAccount,
+  deleteProxy,
   getProxyValidationJob,
   importAccounts,
   importProxies,
@@ -34,6 +36,23 @@ const proxyPolling = ref(false)
 const selectedAccount = computed(() =>
   accounts.value.find((account) => account.id === selectedAccountId.value)
 )
+
+const statusLabels = {
+  active: '可用',
+  invalid: '不可用',
+  reserved: '待验证',
+  not_authorized: '未授权',
+  authorizing: '授权中',
+  authorized: '已授权',
+  auth_failed: '授权失败',
+  auth_expired: '授权过期',
+  imap_synced: 'IMAP 已同步',
+  imap_failed: 'IMAP 失败',
+}
+
+function statusText(status) {
+  return statusLabels[status] || status || '-'
+}
 
 async function run(action, successText) {
   loading.value = true
@@ -70,11 +89,35 @@ async function submitImport() {
   }, '账号已导入')
 }
 
+async function removeAccount(account) {
+  const confirmed = window.confirm(`删除邮箱账号 ${account.email}？`)
+  if (!confirmed) return
+  await run(async () => {
+    await deleteAccount(account.id)
+    if (selectedAccountId.value === account.id) {
+      selectedAccountId.value = null
+      selectedFolderId.value = null
+      folders.value = []
+      messages.value = []
+    }
+    await refreshAccounts()
+  }, '账号已删除')
+}
+
 async function submitProxyImport() {
   await run(async () => {
     await importProxies(proxyText.value, 'http')
     await refreshProxies()
   }, '代理池已导入')
+}
+
+async function removeProxy(proxy) {
+  const confirmed = window.confirm(`删除代理 ${proxy.host}:${proxy.port}？`)
+  if (!confirmed) return
+  await run(async () => {
+    await deleteProxy(proxy.id)
+    await refreshProxies()
+  }, '代理已删除')
 }
 
 async function validateProxies() {
@@ -199,7 +242,7 @@ onMounted(async () => {
           @click="selectAccount(account)"
         >
           <span>{{ account.email }}</span>
-          <small>{{ account.status }}</small>
+          <small>{{ statusText(account.status) }}</small>
         </button>
       </section>
 
@@ -225,12 +268,6 @@ onMounted(async () => {
             <span>{{ log.message }}</span>
           </div>
         </div>
-        <div class="proxy-list">
-          <div v-for="proxy in proxies.slice(0, 5)" :key="proxy.id" class="proxy-row">
-            <span>{{ proxy.host }}:{{ proxy.port }}</span>
-            <small>{{ proxy.status }}</small>
-          </div>
-        </div>
       </section>
     </aside>
 
@@ -252,6 +289,81 @@ onMounted(async () => {
 
       <div v-if="notice" class="notice">{{ notice }}</div>
       <div v-if="error" class="error">{{ error }}</div>
+
+      <section class="management-grid">
+        <div class="management-section">
+          <div class="section-head">
+            <h3>邮箱列表</h3>
+            <span>{{ accounts.length }} 个账号</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>邮箱</th>
+                  <th>状态</th>
+                  <th>授权方式</th>
+                  <th>最近同步</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="account in accounts"
+                  :key="account.id"
+                  :class="{ selected: account.id === selectedAccountId }"
+                  @click="selectAccount(account)"
+                >
+                  <td class="strong-cell">{{ account.email }}</td>
+                  <td><span class="status-pill" :data-status="account.status">{{ statusText(account.status) }}</span></td>
+                  <td>{{ account.auth_mode }}</td>
+                  <td>{{ account.last_sync_at || '-' }}</td>
+                  <td class="row-actions">
+                    <button @click.stop="removeAccount(account)">删除</button>
+                  </td>
+                </tr>
+                <tr v-if="!accounts.length">
+                  <td colspan="5" class="empty-cell">暂无账号</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="management-section">
+          <div class="section-head">
+            <h3>代理列表</h3>
+            <span>{{ proxies.length }} 个代理</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>代理</th>
+                  <th>类别</th>
+                  <th>状态</th>
+                  <th>用户名</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="proxy in proxies" :key="proxy.id">
+                  <td class="mono-cell">{{ proxy.host }}:{{ proxy.port }}</td>
+                  <td>{{ proxy.type }}</td>
+                  <td><span class="status-pill" :data-status="proxy.status">{{ statusText(proxy.status) }}</span></td>
+                  <td>{{ proxy.username || '-' }}</td>
+                  <td class="row-actions">
+                    <button @click="removeProxy(proxy)">删除</button>
+                  </td>
+                </tr>
+                <tr v-if="!proxies.length">
+                  <td colspan="5" class="empty-cell">暂无代理</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       <div class="mail-layout">
         <nav class="folders">

@@ -23,6 +23,10 @@ export function importAccounts(text) {
   })
 }
 
+export function deleteAccount(accountId) {
+  return request(`/api/accounts/${accountId}`, { method: 'DELETE' })
+}
+
 export function listProxies() {
   return request('/api/proxies')
 }
@@ -40,6 +44,10 @@ export function validateActiveProxies() {
 
 export function getProxyValidationJob(jobId) {
   return request(`/api/proxies/validation-jobs/${jobId}`)
+}
+
+export function deleteProxy(proxyId) {
+  return request(`/api/proxies/${proxyId}`, { method: 'DELETE' })
 }
 
 export function startOAuth(accountId) {

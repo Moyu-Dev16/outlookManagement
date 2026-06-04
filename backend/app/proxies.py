@@ -280,3 +280,12 @@ def get_validation_job(job_id: str):
         if not job:
             raise HTTPException(status_code=404, detail="Validation job not found")
         return dict(job)
+
+
+@router.delete("/{proxy_id}")
+def delete_proxy(proxy_id: int):
+    with connect() as conn:
+        cursor = conn.execute("DELETE FROM proxies WHERE id = ?", (proxy_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Proxy not found")
+    return {"deleted": True, "id": proxy_id}

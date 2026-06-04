@@ -29,6 +29,10 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
+  await page.route('**/api/accounts/1', async (route) => {
+    await route.fulfill({ json: { deleted: true, id: 1 } })
+  })
+
   await page.route('**/api/proxies', async (route) => {
     await route.fulfill({ json: [] })
   })
@@ -37,6 +41,10 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       json: { parsed: 2, created: 2, updated: 0 },
     })
+  })
+
+  await page.route('**/api/proxies/1', async (route) => {
+    await route.fulfill({ json: { deleted: true, id: 1 } })
   })
 
   await page.route('**/api/proxies/validate-active', async (route) => {
@@ -121,7 +129,7 @@ test('imports an account and displays synced mailbox data', async ({ page }) => 
   await page.getByRole('button', { name: '导入账号' }).click()
 
   await expect(page.getByRole('button', { name: /demo@outlook\.com/ })).toBeVisible()
-  await expect(page.getByText('not_authorized')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'demo@outlook.com 未授权' })).toBeVisible()
 
   await page.getByRole('button', { name: 'IMAP 试同步' }).click()
 

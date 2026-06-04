@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from .db import connect
 from .models import AccountOut, ImportAccountsRequest
@@ -68,3 +68,12 @@ def import_accounts(payload: ImportAccountsRequest):
                 )
                 created += 1
     return {"parsed": len(parsed), "created": created, "updated": updated}
+
+
+@router.delete("/{account_id}")
+def delete_account(account_id: int):
+    with connect() as conn:
+        cursor = conn.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Account not found")
+    return {"deleted": True, "id": account_id}
