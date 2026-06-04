@@ -23,6 +23,17 @@ export function importAccounts(text) {
   })
 }
 
+export function listProxies() {
+  return request('/api/proxies')
+}
+
+export function importProxies(text, type = 'http') {
+  return request('/api/proxies/import', {
+    method: 'POST',
+    body: JSON.stringify({ text, type }),
+  })
+}
+
 export function startOAuth(accountId) {
   return request(`/api/oauth/microsoft/start/${accountId}`)
 }

@@ -29,6 +29,16 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
+  await page.route('**/api/proxies', async (route) => {
+    await route.fulfill({ json: [] })
+  })
+
+  await page.route('**/api/proxies/import', async (route) => {
+    await route.fulfill({
+      json: { parsed: 2, created: 2, updated: 0 },
+    })
+  })
+
   await page.route('**/api/accounts/1/folders', async (route) => {
     await route.fulfill({
       json: [

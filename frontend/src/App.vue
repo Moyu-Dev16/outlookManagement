@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   importAccounts,
+  importProxies,
   listAccounts,
   listFolders,
   listMessages,
+  listProxies,
   startOAuth,
   startPlaywrightOAuth,
   syncAccount,
@@ -12,8 +14,11 @@ import {
 } from './api'
 
 const sample = 'account1@outlook.com----password----totp-secret\naccount2@outlook.com----password----totp-secret'
+const proxySample = '195.40.123.187:6371:lxdtjafb:u3mzslwqc1jj\n50.114.3.153:6117:lxdtjafb:u3mzslwqc1jj'
 const importText = ref(sample)
+const proxyText = ref(proxySample)
 const accounts = ref([])
+const proxies = ref([])
 const folders = ref([])
 const messages = ref([])
 const selectedAccountId = ref(null)
@@ -49,12 +54,23 @@ async function refreshAccounts() {
   }
 }
 
+async function refreshProxies() {
+  proxies.value = await listProxies()
+}
+
 async function submitImport() {
   await run(async () => {
     const result = await importAccounts(importText.value)
     await refreshAccounts()
     return result
   }, '账号已导入')
+}
+
+async function submitProxyImport() {
+  await run(async () => {
+    await importProxies(proxyText.value, 'http')
+    await refreshProxies()
+  }, '代理池已导入')
 }
 
 async function authorize(account) {
@@ -67,7 +83,7 @@ async function authorize(account) {
 async function authorizeWithPlaywright(account) {
   await run(
     () => startPlaywrightOAuth(account.id),
-    '已启动 Playwright 授权窗口，请在弹出的浏览器中手动完成登录'
+    '已启动 Playwright 授权窗口，将随机使用一个可用代理'
   )
 }
 
@@ -108,7 +124,7 @@ onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
   if (params.get('oauth') === 'success') notice.value = '授权成功，可以同步邮件了'
   if (params.get('oauth') === 'failed') error.value = '授权失败，请检查后端配置或账号状态'
-  await refreshAccounts()
+  await Promise.all([refreshAccounts(), refreshProxies()])
 })
 </script>
 
@@ -138,6 +154,21 @@ onMounted(async () => {
           <span>{{ account.email }}</span>
           <small>{{ account.status }}</small>
         </button>
+      </section>
+
+      <section class="panel proxy-panel">
+        <div class="panel-title">代理池</div>
+        <textarea v-model="proxyText" spellcheck="false" />
+        <div class="proxy-actions">
+          <button :disabled="loading" @click="submitProxyImport">导入代理</button>
+          <span>{{ proxies.length }} 个代理</span>
+        </div>
+        <div class="proxy-list">
+          <div v-for="proxy in proxies.slice(0, 5)" :key="proxy.id" class="proxy-row">
+            <span>{{ proxy.host }}:{{ proxy.port }}</span>
+            <small>{{ proxy.status }}</small>
+          </div>
+        </div>
       </section>
     </aside>
 

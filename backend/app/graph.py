@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
+import json
 import os
+import random
 import secrets
 import subprocess
 
@@ -67,6 +69,7 @@ def start_oauth(account_id: int):
 @router.post("/oauth/microsoft/playwright/{account_id}")
 def start_playwright_oauth(account_id: int):
     auth_url = build_oauth_url(account_id)
+    selected_proxy = pick_playwright_proxy()
     root_dir = Path(__file__).resolve().parents[2]
     frontend_dir = root_dir / "frontend"
     script_path = frontend_dir / "scripts" / "open-auth-browser.mjs"
@@ -88,7 +91,13 @@ def start_playwright_oauth(account_id: int):
 
     try:
         subprocess.Popen(
-            ["node", str(script_path), auth_url, str(profile_dir)],
+            [
+                "node",
+                str(script_path),
+                auth_url,
+                str(profile_dir),
+                json.dumps(selected_proxy or {}),
+            ],
             **popen_kwargs,
         )
     except FileNotFoundError as exc:
@@ -96,7 +105,44 @@ def start_playwright_oauth(account_id: int):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to launch Playwright: {exc}") from exc
 
-    return {"started": True, "mode": "playwright_manual", "account_id": account_id}
+    return {
+        "started": True,
+        "mode": "playwright_manual",
+        "account_id": account_id,
+        "proxy": sanitize_proxy(selected_proxy),
+    }
+
+
+def pick_playwright_proxy() -> dict[str, str] | None:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, type, host, port, username, password
+            FROM proxies
+            WHERE status = 'active'
+            """
+        ).fetchall()
+
+    if not rows:
+        return None
+
+    proxy = dict(random.choice(rows))
+    server = f"{proxy['type']}://{proxy['host']}:{proxy['port']}"
+    result = {"server": server}
+    if proxy.get("username"):
+        result["username"] = proxy["username"]
+    if proxy.get("password"):
+        result["password"] = proxy["password"]
+    return result
+
+
+def sanitize_proxy(proxy: dict[str, str] | None) -> dict[str, str] | None:
+    if not proxy:
+        return None
+    safe = {"server": proxy["server"]}
+    if proxy.get("username"):
+        safe["username"] = proxy["username"]
+    return safe
 
 
 @router.get("/oauth/microsoft/callback")

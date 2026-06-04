@@ -95,6 +95,42 @@ textarea {
   gap: 8px;
 }
 
+.proxy-panel textarea {
+  height: 110px;
+}
+
+.proxy-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.proxy-actions span {
+  color: #627386;
+  font-size: 13px;
+}
+
+.proxy-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.proxy-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #e5edf3;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #34495e;
+  font-size: 13px;
+}
+
+.proxy-row small {
+  color: #66798b;
+}
+
 .account-row {
   display: grid;
   grid-template-columns: 1fr auto;
