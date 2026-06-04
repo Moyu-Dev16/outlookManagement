@@ -1,4 +1,5 @@
 backend/data/
+backend/data/playwright-profiles/
 backend/app/__pycache__/
 frontend/dist/
 frontend/node_modules/

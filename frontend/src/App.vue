@@ -6,6 +6,7 @@ import {
   listFolders,
   listMessages,
   startOAuth,
+  startPlaywrightOAuth,
   syncAccount,
   syncAccountViaImap,
 } from './api'
@@ -61,6 +62,13 @@ async function authorize(account) {
   if (result?.url) {
     window.location.href = result.url
   }
+}
+
+async function authorizeWithPlaywright(account) {
+  await run(
+    () => startPlaywrightOAuth(account.id),
+    '已启动 Playwright 授权窗口，请在弹出的浏览器中手动完成登录'
+  )
 }
 
 async function sync(account) {
@@ -141,6 +149,9 @@ onMounted(async () => {
         </div>
         <div v-if="selectedAccount" class="actions">
           <button :disabled="loading" @click="authorize(selectedAccount)">授权</button>
+          <button :disabled="loading" @click="authorizeWithPlaywright(selectedAccount)">
+            Playwright 授权
+          </button>
           <button class="primary" :disabled="loading" @click="sync(selectedAccount)">同步</button>
           <button :disabled="loading" @click="syncImap(selectedAccount)">IMAP 试同步</button>
         </div>

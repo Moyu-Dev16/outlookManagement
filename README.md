@@ -28,6 +28,13 @@ npm.cmd run dev
 
 Open the Vite URL shown in the terminal.
 
+Manual Playwright OAuth opens a local Chromium window for you to complete Microsoft login yourself. Install the browser once if needed:
+
+```powershell
+cd frontend
+npx.cmd playwright install chromium
+```
+
 Run frontend end-to-end tests:
 
 ```powershell

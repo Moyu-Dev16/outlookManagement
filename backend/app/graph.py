@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import urlencode
+import os
 import secrets
+import subprocess
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -28,8 +31,7 @@ def require_ms_config():
     return settings
 
 
-@router.get("/oauth/microsoft/start/{account_id}")
-def start_oauth(account_id: int):
+def build_oauth_url(account_id: int) -> str:
     settings = require_ms_config()
     with connect() as conn:
         account = conn.execute(
@@ -54,7 +56,47 @@ def start_oauth(account_id: int):
             "prompt": "select_account",
         }
     )
-    return {"url": f"{AUTH_URL}?{params}"}
+    return f"{AUTH_URL}?{params}"
+
+
+@router.get("/oauth/microsoft/start/{account_id}")
+def start_oauth(account_id: int):
+    return {"url": build_oauth_url(account_id)}
+
+
+@router.post("/oauth/microsoft/playwright/{account_id}")
+def start_playwright_oauth(account_id: int):
+    auth_url = build_oauth_url(account_id)
+    root_dir = Path(__file__).resolve().parents[2]
+    frontend_dir = root_dir / "frontend"
+    script_path = frontend_dir / "scripts" / "open-auth-browser.mjs"
+    profile_dir = root_dir / "backend" / "data" / "playwright-profiles" / f"account-{account_id}"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    if not script_path.exists():
+        raise HTTPException(status_code=500, detail="Playwright launcher script not found")
+
+    popen_kwargs = {
+        "cwd": str(frontend_dir),
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
+
+    try:
+        subprocess.Popen(
+            ["node", str(script_path), auth_url, str(profile_dir)],
+            **popen_kwargs,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="Node.js not found in PATH") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to launch Playwright: {exc}") from exc
+
+    return {"started": True, "mode": "playwright_manual", "account_id": account_id}
 
 
 @router.get("/oauth/microsoft/callback")
