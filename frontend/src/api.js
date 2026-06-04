@@ -34,6 +34,10 @@ export function importProxies(text, type = 'http') {
   })
 }
 
+export function validateActiveProxies() {
+  return request('/api/proxies/validate-active', { method: 'POST' })
+}
+
 export function startOAuth(accountId) {
   return request(`/api/oauth/microsoft/start/${accountId}`)
 }

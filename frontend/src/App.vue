@@ -11,6 +11,7 @@ import {
   startPlaywrightOAuth,
   syncAccount,
   syncAccountViaImap,
+  validateActiveProxies,
 } from './api'
 
 const sample = 'account1@outlook.com----password----totp-secret\naccount2@outlook.com----password----totp-secret'
@@ -71,6 +72,17 @@ async function submitProxyImport() {
     await importProxies(proxyText.value, 'http')
     await refreshProxies()
   }, '代理池已导入')
+}
+
+async function validateProxies() {
+  const result = await run(async () => {
+    const validation = await validateActiveProxies()
+    await refreshProxies()
+    return validation
+  }, '代理验证完成')
+  if (result) {
+    notice.value = `代理验证完成：可用 ${result.valid}，不可用 ${result.invalid}`
+  }
 }
 
 async function authorize(account) {
@@ -161,6 +173,7 @@ onMounted(async () => {
         <textarea v-model="proxyText" spellcheck="false" />
         <div class="proxy-actions">
           <button :disabled="loading" @click="submitProxyImport">导入代理</button>
+          <button :disabled="loading" @click="validateProxies">验证代理</button>
           <span>{{ proxies.length }} 个代理</span>
         </div>
         <div class="proxy-list">

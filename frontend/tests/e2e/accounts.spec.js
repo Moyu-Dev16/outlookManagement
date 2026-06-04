@@ -39,6 +39,12 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
+  await page.route('**/api/proxies/validate-active', async (route) => {
+    await route.fulfill({
+      json: { checked: 0, valid: 0, invalid: 0 },
+    })
+  })
+
   await page.route('**/api/accounts/1/folders', async (route) => {
     await route.fulfill({
       json: [

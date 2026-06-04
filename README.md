@@ -92,5 +92,6 @@ Proxies:
 ```
 
 Manual Playwright OAuth randomly uses one active imported proxy when the proxy pool is not empty.
+Before launching Playwright, the backend validates active HTTP proxies with a `CONNECT login.microsoftonline.com:443` check. Failed proxies are marked `invalid` and skipped.
 
 Passwords and TOTP secrets are stored as plain text in SQLite for this MVP, per current project decision.

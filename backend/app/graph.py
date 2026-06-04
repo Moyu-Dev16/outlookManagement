@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse
 
 from .config import get_settings
 from .db import connect
+from .proxies import set_proxy_status, validate_proxy_connect
 
 router = APIRouter(prefix="/api", tags=["microsoft-graph"])
 
@@ -69,7 +70,7 @@ def start_oauth(account_id: int):
 @router.post("/oauth/microsoft/playwright/{account_id}")
 def start_playwright_oauth(account_id: int):
     auth_url = build_oauth_url(account_id)
-    selected_proxy = pick_playwright_proxy()
+    selected_proxy = pick_playwright_proxy(require_valid=True)
     root_dir = Path(__file__).resolve().parents[2]
     frontend_dir = root_dir / "frontend"
     script_path = frontend_dir / "scripts" / "open-auth-browser.mjs"
@@ -113,7 +114,7 @@ def start_playwright_oauth(account_id: int):
     }
 
 
-def pick_playwright_proxy() -> dict[str, str] | None:
+def pick_playwright_proxy(require_valid: bool = False) -> dict[str, str] | None:
     with connect() as conn:
         rows = conn.execute(
             """
@@ -126,7 +127,30 @@ def pick_playwright_proxy() -> dict[str, str] | None:
     if not rows:
         return None
 
-    proxy = dict(random.choice(rows))
+    candidates = [dict(row) for row in rows]
+    random.shuffle(candidates)
+    saw_proxy = False
+
+    for proxy in candidates:
+        saw_proxy = True
+        if require_valid:
+            ok, _ = validate_proxy_connect(proxy)
+            if not ok:
+                set_proxy_status(proxy["id"], "invalid")
+                continue
+            set_proxy_status(proxy["id"], "active")
+        return build_playwright_proxy(proxy)
+
+    if saw_proxy and require_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid active proxy is available. Import or validate proxies first.",
+        )
+
+    return None
+
+
+def build_playwright_proxy(proxy: dict) -> dict[str, str]:
     server = f"{proxy['type']}://{proxy['host']}:{proxy['port']}"
     result = {"server": server}
     if proxy.get("username"):
