@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .accounts import router as accounts_router
 from .db import init_db
 from .graph import router as graph_router
+from .imap_sync import router as imap_router
 
 app = FastAPI(title="Outlook Management API")
 
@@ -28,3 +29,4 @@ def health():
 
 app.include_router(accounts_router)
 app.include_router(graph_router)
+app.include_router(imap_router)

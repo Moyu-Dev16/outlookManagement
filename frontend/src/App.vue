@@ -7,6 +7,7 @@ import {
   listMessages,
   startOAuth,
   syncAccount,
+  syncAccountViaImap,
 } from './api'
 
 const sample = 'account1@outlook.com----password----totp-secret\naccount2@outlook.com----password----totp-secret'
@@ -68,6 +69,14 @@ async function sync(account) {
     await refreshAccounts()
     await loadMailbox()
   }, '同步完成')
+}
+
+async function syncImap(account) {
+  await run(async () => {
+    await syncAccountViaImap(account.id)
+    await refreshAccounts()
+    await loadMailbox()
+  }, 'IMAP 同步完成')
 }
 
 async function loadMailbox() {
@@ -133,6 +142,7 @@ onMounted(async () => {
         <div v-if="selectedAccount" class="actions">
           <button :disabled="loading" @click="authorize(selectedAccount)">授权</button>
           <button class="primary" :disabled="loading" @click="sync(selectedAccount)">同步</button>
+          <button :disabled="loading" @click="syncImap(selectedAccount)">IMAP 试同步</button>
         </div>
       </header>
 

@@ -31,6 +31,10 @@ export function syncAccount(accountId) {
   return request(`/api/sync/accounts/${accountId}`, { method: 'POST' })
 }
 
+export function syncAccountViaImap(accountId) {
+  return request(`/api/imap/accounts/${accountId}/sync`, { method: 'POST' })
+}
+
 export function listFolders(accountId) {
   return request(`/api/accounts/${accountId}/folders`)
 }
