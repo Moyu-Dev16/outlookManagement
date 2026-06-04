@@ -87,8 +87,8 @@ email2@example.com----password----totp-secret
 Proxies:
 
 ```text
-195.40.123.187:6371:lxdtjafb:u3mzslwqc1jj
-50.114.3.153:6117:lxdtjafb:u3mzslwqc1jj
+host:port:username:password
+host:port:username:password
 ```
 
 Manual Playwright OAuth randomly uses one active imported proxy when the proxy pool is not empty.

@@ -15,9 +15,8 @@ import {
 } from './api'
 
 const sample = 'account1@outlook.com----password----totp-secret\naccount2@outlook.com----password----totp-secret'
-const proxySample = '195.40.123.187:6371:lxdtjafb:u3mzslwqc1jj\n50.114.3.153:6117:lxdtjafb:u3mzslwqc1jj'
 const importText = ref(sample)
-const proxyText = ref(proxySample)
+const proxyText = ref('')
 const accounts = ref([])
 const proxies = ref([])
 const folders = ref([])
