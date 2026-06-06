@@ -34,6 +34,10 @@ class OAuthSessionLogRequest(BaseModel):
     message: str
 
 
+class OAuthSessionFailRequest(BaseModel):
+    message: str
+
+
 def require_ms_config():
     settings = get_settings()
     if not settings.microsoft_client_id:
@@ -87,6 +91,8 @@ def create_oauth_session(account_id: int) -> dict:
             "email": account["email"],
             "code_verifier": verifier,
             "status": "created",
+            "attempts": 0,
+            "max_attempts": 3,
             "logs": [],
             "created_at": datetime.utcnow().isoformat(timespec="seconds"),
             "finished_at": None,
@@ -155,6 +161,8 @@ def start_playwright_oauth(account_id: int):
                         "email": session["email"],
                         "sessionId": session["id"],
                         "apiBase": "http://127.0.0.1:8000",
+                        "maxAttempts": session["max_attempts"],
+                        "manualTimeoutMs": 180000,
                     }
                 ),
             ],
@@ -191,6 +199,30 @@ def add_oauth_session_log(session_id: str, payload: OAuthSessionLogRequest):
         if session_id not in oauth_sessions:
             raise HTTPException(status_code=404, detail="OAuth session not found")
     append_oauth_log(session_id, payload.message[:1000])
+    return {"ok": True}
+
+
+@router.post("/oauth/microsoft/sessions/{session_id}/fail")
+def fail_oauth_session(session_id: str, payload: OAuthSessionFailRequest):
+    with oauth_sessions_lock:
+        session = oauth_sessions.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="OAuth session not found")
+        session["status"] = "failed"
+        session["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+        account_id = session["account_id"]
+
+    message = payload.message[:500]
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE accounts
+            SET status = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            ("auth_failed", message, account_id),
+        )
+    append_oauth_log(session_id, f"Authorization archived as failed: {message}")
     return {"ok": True}
 
 

@@ -36,6 +36,15 @@ function log(message) {
   }
 }
 
+async function archiveAuthorizationFailure(message) {
+  if (!meta.apiBase || !meta.sessionId) return
+  await fetch(`${meta.apiBase}/api/oauth/microsoft/sessions/${encodeURIComponent(meta.sessionId)}/fail`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  }).catch(() => {})
+}
+
 function safeUrlForLog(rawUrl) {
   try {
     const url = new URL(rawUrl)
@@ -174,46 +183,88 @@ async function handleCommonMicrosoftPrompts(page, rounds = 8) {
   }
 }
 
-log('launching Playwright OAuth browser in incognito context')
+async function runAttempt(attempt, maxAttempts) {
+  log(`launching Playwright OAuth browser in incognito context, attempt ${attempt}/${maxAttempts}`)
+  const browser = await chromium.launch({ headless: false })
+  const context = await browser.newContext({
+    proxy,
+    viewport: { width: 1280, height: 860 },
+  })
 
-const browser = await chromium.launch({
-  headless: false,
-})
+  let outcome = 'timeout'
+  let outcomeUrl = ''
+  const timeoutMs = Number(meta.manualTimeoutMs || 180000)
 
-const context = await browser.newContext({
-  proxy,
-  viewport: { width: 1280, height: 860 },
-})
+  try {
+    const page = await context.newPage()
+    await page.goto(authUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
+    log('Microsoft OAuth page opened')
 
-const page = await context.newPage()
-await page.goto(authUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
-log('Microsoft OAuth page opened')
+    if (meta.email) {
+      const filledEmail = await fillFirstVisible(
+        page,
+        ['input[type="email"]', 'input[name="loginfmt"]'],
+        meta.email,
+        5000,
+      )
+      if (filledEmail) {
+        log('filled email field')
+        await clickFirstVisible(page, ['input[type="submit"]', 'button[type="submit"]'], 5000)
+        await page.waitForTimeout(1200)
+      }
+    }
 
-if (meta.email) {
-  const filledEmail = await fillFirstVisible(
-    page,
-    ['input[type="email"]', 'input[name="loginfmt"]'],
-    meta.email,
-    5000,
-  )
-  if (filledEmail) {
-    log('filled email field')
-    await clickFirstVisible(page, ['input[type="submit"]', 'button[type="submit"]'], 5000)
-    await page.waitForTimeout(1200)
+    handleCommonMicrosoftPrompts(page, 12).catch((error) => log(`prompt helper stopped: ${error.message}`))
+
+    outcome = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), timeoutMs)
+      page.on('framenavigated', async (frame) => {
+        if (frame !== page.mainFrame()) return
+        const url = frame.url()
+        outcomeUrl = url
+        log(`navigated: ${safeUrlForLog(url)}`)
+        handleCommonMicrosoftPrompts(page, 4).catch((error) => log(`prompt helper stopped: ${error.message}`))
+        if (url.includes('oauth=success')) {
+          clearTimeout(timer)
+          resolve('success')
+        }
+        if (url.includes('oauth=failed')) {
+          clearTimeout(timer)
+          resolve('failed')
+        }
+      })
+    })
+
+    if (outcome === 'success') {
+      log('OAuth callback reached successfully')
+      await page.waitForTimeout(3000)
+    } else if (outcome === 'failed') {
+      log(`OAuth callback failed on attempt ${attempt}: ${safeUrlForLog(outcomeUrl)}`)
+    } else {
+      log(`OAuth attempt ${attempt} timed out after ${Math.round(timeoutMs / 1000)} seconds`)
+    }
+    return outcome
+  } catch (error) {
+    log(`OAuth attempt ${attempt} crashed: ${error.message}`)
+    return 'failed'
+  } finally {
+    await browser.close().catch(() => {})
   }
 }
 
-handleCommonMicrosoftPrompts(page, 12).catch((error) => log(`prompt helper stopped: ${error.message}`))
-
-page.on('framenavigated', async (frame) => {
-  if (frame !== page.mainFrame()) return
-  const url = frame.url()
-  log(`navigated: ${safeUrlForLog(url)}`)
-  handleCommonMicrosoftPrompts(page, 4).catch((error) => log(`prompt helper stopped: ${error.message}`))
-  if (url.includes('oauth=success') || url.includes('oauth=failed')) {
-    log('OAuth callback reached, closing browser soon')
-    setTimeout(async () => {
-      await browser.close()
-    }, 3000)
+const maxAttempts = Math.max(1, Number(meta.maxAttempts || 3))
+let finalOutcome = 'failed'
+for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  const outcome = await runAttempt(attempt, maxAttempts)
+  finalOutcome = outcome
+  if (outcome === 'success') break
+  if (attempt < maxAttempts) {
+    log(`retrying OAuth authorization, next attempt ${attempt + 1}/${maxAttempts}`)
   }
-})
+}
+
+if (finalOutcome !== 'success') {
+  const message = `OAuth authorization failed after ${maxAttempts} attempts`
+  log(message)
+  await archiveAuthorizationFailure(message)
+}
