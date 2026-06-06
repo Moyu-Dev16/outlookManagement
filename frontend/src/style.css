@@ -228,6 +228,35 @@ textarea {
   margin-bottom: 18px;
 }
 
+.auth-log-section {
+  border: 1px solid #d9e2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  margin-bottom: 18px;
+}
+
+.auth-log-body {
+  padding: 12px 14px;
+}
+
+.auth-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: #526579;
+  font-size: 13px;
+}
+
+.auth-meta button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.wide-log-panel {
+  max-height: 160px;
+}
+
 .management-section {
   min-width: 0;
   border: 1px solid #d9e2ea;
@@ -318,7 +347,8 @@ tbody tr.selected {
 
 .status-pill[data-status="active"],
 .status-pill[data-status="authorized"],
-.status-pill[data-status="imap_synced"] {
+.status-pill[data-status="imap_synced"],
+.status-pill[data-status="created"] {
   background: #e7f6ef;
   color: #16613d;
 }

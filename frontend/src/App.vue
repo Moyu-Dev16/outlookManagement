@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   deleteAccount,
   deleteProxy,
+  getOAuthSession,
   getProxyValidationJob,
   importAccounts,
   importProxies,
@@ -32,6 +33,8 @@ const error = ref('')
 const proxyValidationJob = ref(null)
 const proxyLogs = ref([])
 const proxyPolling = ref(false)
+const oauthSession = ref(null)
+const oauthLogs = ref([])
 
 const selectedAccount = computed(() =>
   accounts.value.find((account) => account.id === selectedAccountId.value)
@@ -48,6 +51,8 @@ const statusLabels = {
   auth_expired: '授权过期',
   imap_synced: 'IMAP 已同步',
   imap_failed: 'IMAP 失败',
+  created: '已创建',
+  failed: '失败',
 }
 
 function statusText(status) {
@@ -171,10 +176,31 @@ async function authorize(account) {
 }
 
 async function authorizeWithPlaywright(account) {
-  await run(
+  const result = await run(
     () => startPlaywrightOAuth(account.id),
-    '已启动 Playwright 授权窗口，将随机使用一个可用代理'
+    '已启动 Playwright 授权窗口，请在弹出的浏览器中完成 Microsoft 授权'
   )
+  if (result?.session_id) {
+    oauthSession.value = {
+      id: result.session_id,
+      status: 'created',
+      email: account.email,
+      proxy: result.proxy,
+      logs: [],
+    }
+    oauthLogs.value = []
+  }
+}
+
+async function refreshOAuthSession() {
+  if (!oauthSession.value?.id) return
+  await run(async () => {
+    const session = await getOAuthSession(oauthSession.value.id)
+    oauthSession.value = session
+    oauthLogs.value = session.logs || []
+    await refreshAccounts()
+    return session
+  }, '授权日志已刷新')
 }
 
 async function sync(account) {
@@ -289,6 +315,26 @@ onMounted(async () => {
 
       <div v-if="notice" class="notice">{{ notice }}</div>
       <div v-if="error" class="error">{{ error }}</div>
+
+      <section v-if="oauthSession" class="auth-log-section">
+        <div class="section-head">
+          <h3>Playwright 授权</h3>
+          <span>{{ oauthSession.email }} · {{ statusText(oauthSession.status) }}</span>
+        </div>
+        <div class="auth-log-body">
+          <div class="auth-meta">
+            <span>Session: {{ oauthSession.id }}</span>
+            <span>代理: {{ oauthSession.proxy?.server || '未使用代理' }}</span>
+            <button :disabled="loading" @click="refreshOAuthSession">刷新授权日志</button>
+          </div>
+          <div v-if="oauthLogs.length" class="log-panel wide-log-panel">
+            <div v-for="(log, index) in oauthLogs" :key="index" class="log-line">
+              <time>{{ log.time }}</time>
+              <span>{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section class="management-grid">
         <div class="management-section">

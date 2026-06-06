@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
+import base64
+import hashlib
 import json
 import os
 import random
 import secrets
 import subprocess
+import threading
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -22,6 +25,8 @@ AUTH_URL = f"{AUTHORITY}/oauth2/v2.0/authorize"
 TOKEN_URL = f"{AUTHORITY}/oauth2/v2.0/token"
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 SCOPES = "offline_access User.Read Mail.Read"
+oauth_sessions: dict[str, dict] = {}
+oauth_sessions_lock = threading.Lock()
 
 
 def require_ms_config():
@@ -34,19 +39,53 @@ def require_ms_config():
     return settings
 
 
-def build_oauth_url(account_id: int) -> str:
+def pkce_pair() -> tuple[str, str]:
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
+
+
+def append_oauth_log(state: str, message: str) -> None:
+    with oauth_sessions_lock:
+        session = oauth_sessions.get(state)
+        if not session:
+            return
+        session["logs"].append(
+            {
+                "time": datetime.utcnow().isoformat(timespec="seconds"),
+                "message": message,
+            }
+        )
+        session["logs"] = session["logs"][-200:]
+
+
+def create_oauth_session(account_id: int) -> dict:
     settings = require_ms_config()
     with connect() as conn:
         account = conn.execute(
-            "SELECT id FROM accounts WHERE id = ?", (account_id,)
+            "SELECT id, email FROM accounts WHERE id = ?", (account_id,)
         ).fetchone()
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
         state = f"{account_id}:{secrets.token_urlsafe(24)}"
+        verifier, challenge = pkce_pair()
         conn.execute(
             "UPDATE accounts SET status = ?, last_error = NULL WHERE id = ?",
             ("authorizing", account_id),
         )
+
+    with oauth_sessions_lock:
+        oauth_sessions[state] = {
+            "id": state,
+            "account_id": account_id,
+            "email": account["email"],
+            "code_verifier": verifier,
+            "status": "created",
+            "logs": [],
+            "created_at": datetime.utcnow().isoformat(timespec="seconds"),
+            "finished_at": None,
+        }
 
     params = urlencode(
         {
@@ -56,20 +95,27 @@ def build_oauth_url(account_id: int) -> str:
             "response_mode": "query",
             "scope": SCOPES,
             "state": state,
-            "prompt": "select_account",
+            "prompt": "consent",
+            "login_hint": account["email"],
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
         }
     )
-    return f"{AUTH_URL}?{params}"
+    auth_url = f"{AUTH_URL}?{params}"
+    append_oauth_log(state, f"{account['email']}: PKCE OAuth session created")
+    return {**oauth_sessions[state], "url": auth_url}
 
 
 @router.get("/oauth/microsoft/start/{account_id}")
 def start_oauth(account_id: int):
-    return {"url": build_oauth_url(account_id)}
+    session = create_oauth_session(account_id)
+    return {"url": session["url"], "session_id": session["id"]}
 
 
 @router.post("/oauth/microsoft/playwright/{account_id}")
 def start_playwright_oauth(account_id: int):
-    auth_url = build_oauth_url(account_id)
+    session = create_oauth_session(account_id)
+    auth_url = session["url"]
     selected_proxy = pick_playwright_proxy(require_valid=True)
     root_dir = Path(__file__).resolve().parents[2]
     frontend_dir = root_dir / "frontend"
@@ -98,6 +144,7 @@ def start_playwright_oauth(account_id: int):
                 auth_url,
                 str(profile_dir),
                 json.dumps(selected_proxy or {}),
+                json.dumps({"accountId": account_id, "email": session["email"], "sessionId": session["id"]}),
             ],
             **popen_kwargs,
         )
@@ -110,8 +157,20 @@ def start_playwright_oauth(account_id: int):
         "started": True,
         "mode": "playwright_manual",
         "account_id": account_id,
+        "session_id": session["id"],
         "proxy": sanitize_proxy(selected_proxy),
     }
+
+
+@router.get("/oauth/microsoft/sessions/{session_id}")
+def get_oauth_session(session_id: str):
+    with oauth_sessions_lock:
+        session = oauth_sessions.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="OAuth session not found")
+        safe = dict(session)
+        safe.pop("code_verifier", None)
+        return safe
 
 
 def pick_playwright_proxy(require_valid: bool = False) -> dict[str, str] | None:
@@ -173,11 +232,22 @@ def sanitize_proxy(proxy: dict[str, str] | None) -> dict[str, str] | None:
 async def oauth_callback(code: str | None = None, state: str | None = None, error: str | None = None):
     settings = require_ms_config()
     if error:
+        if state:
+            with oauth_sessions_lock:
+                session = oauth_sessions.get(state)
+                if session:
+                    session["status"] = "failed"
+                    session["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+            append_oauth_log(state, f"OAuth callback failed: {error}")
         return RedirectResponse(f"{settings.app_base_url}/?oauth=failed&error={error}")
     if not code or not state or ":" not in state:
         raise HTTPException(status_code=400, detail="Invalid OAuth callback")
 
-    account_id = int(state.split(":", 1)[0])
+    with oauth_sessions_lock:
+        session = oauth_sessions.get(state)
+
+    account_id = session["account_id"] if session else int(state.split(":", 1)[0])
+    append_oauth_log(state, "OAuth callback captured authorization code")
     data = {
         "client_id": settings.microsoft_client_id,
         "scope": SCOPES,
@@ -185,6 +255,8 @@ async def oauth_callback(code: str | None = None, state: str | None = None, erro
         "redirect_uri": settings.microsoft_redirect_uri,
         "grant_type": "authorization_code",
     }
+    if session and session.get("code_verifier"):
+        data["code_verifier"] = session["code_verifier"]
     if settings.microsoft_client_secret:
         data["client_secret"] = settings.microsoft_client_secret
 
@@ -196,9 +268,27 @@ async def oauth_callback(code: str | None = None, state: str | None = None, erro
                 "UPDATE accounts SET status = ?, last_error = ? WHERE id = ?",
                 ("auth_failed", response.text[:500], account_id),
             )
+        if session:
+            with oauth_sessions_lock:
+                session["status"] = "failed"
+                session["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+            append_oauth_log(state, f"Token exchange failed: {response.text[:300]}")
         return RedirectResponse(f"{settings.app_base_url}/?oauth=failed")
 
     token = response.json()
+    if not token.get("refresh_token"):
+        with connect() as conn:
+            conn.execute(
+                "UPDATE accounts SET status = ?, last_error = ? WHERE id = ?",
+                ("auth_failed", "Token response missing refresh_token", account_id),
+            )
+        if session:
+            with oauth_sessions_lock:
+                session["status"] = "failed"
+                session["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+            append_oauth_log(state, "Token response missing refresh_token")
+        return RedirectResponse(f"{settings.app_base_url}/?oauth=failed")
+
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=token.get("expires_in", 3600))
     with connect() as conn:
         conn.execute(
@@ -216,6 +306,11 @@ async def oauth_callback(code: str | None = None, state: str | None = None, erro
                 account_id,
             ),
         )
+    if session:
+        with oauth_sessions_lock:
+            session["status"] = "authorized"
+            session["finished_at"] = datetime.utcnow().isoformat(timespec="seconds")
+        append_oauth_log(state, "refresh_token saved to SQLite")
     return RedirectResponse(f"{settings.app_base_url}/?oauth=success")
 
 
