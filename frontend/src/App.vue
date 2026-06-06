@@ -40,6 +40,7 @@ const proxyLogs = ref([])
 const proxyPolling = ref(false)
 const oauthSession = ref(null)
 const oauthLogs = ref([])
+const usePlaywrightProxy = ref(false)
 
 const selectedAccount = computed(() =>
   accounts.value.find((account) => account.id === selectedAccountId.value)
@@ -231,7 +232,7 @@ async function authorize(account) {
 
 async function authorizeWithPlaywright(account) {
   const result = await run(
-    () => startPlaywrightOAuth(account.id),
+    () => startPlaywrightOAuth(account.id, { useProxy: usePlaywrightProxy.value }),
     '已启动 Playwright 授权窗口，请在弹出的浏览器中完成 Microsoft 授权'
   )
   if (result?.session_id) {
@@ -239,6 +240,7 @@ async function authorizeWithPlaywright(account) {
       id: result.session_id,
       status: 'created',
       email: account.email,
+      proxy_enabled: result.proxy_enabled,
       proxy: result.proxy,
       logs: [],
     }
@@ -357,6 +359,10 @@ onMounted(async () => {
         </div>
         <div v-if="selectedAccount" class="actions">
           <button :disabled="loading" @click="authorize(selectedAccount)">授权</button>
+          <label class="toggle-field">
+            <input v-model="usePlaywrightProxy" type="checkbox" />
+            <span>启用代理</span>
+          </label>
           <button :disabled="loading" @click="authorizeWithPlaywright(selectedAccount)">
             Playwright 授权
           </button>
@@ -395,6 +401,7 @@ onMounted(async () => {
         <div class="auth-log-body">
           <div class="auth-meta">
             <span>Session: {{ oauthSession.id }}</span>
+            <span>代理开关: {{ oauthSession.proxy_enabled ? '已启用' : '未启用' }}</span>
             <span>代理: {{ oauthSession.proxy?.server || '未使用代理' }}</span>
             <button :disabled="loading" @click="refreshOAuthSession">刷新授权日志</button>
           </div>

@@ -58,8 +58,13 @@ export function startOAuth(accountId) {
   return request(`/api/oauth/microsoft/start/${accountId}`)
 }
 
-export function startPlaywrightOAuth(accountId) {
-  return request(`/api/oauth/microsoft/playwright/${accountId}`, { method: 'POST' })
+export function startPlaywrightOAuth(accountId, options = {}) {
+  return request(`/api/oauth/microsoft/playwright/${accountId}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      use_proxy: Boolean(options.useProxy),
+    }),
+  })
 }
 
 export function getOAuthSession(sessionId) {

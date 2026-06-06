@@ -38,6 +38,10 @@ class OAuthSessionFailRequest(BaseModel):
     message: str
 
 
+class PlaywrightOAuthRequest(BaseModel):
+    use_proxy: bool = False
+
+
 def require_ms_config():
     settings = get_settings()
     if not settings.microsoft_client_id:
@@ -93,6 +97,8 @@ def create_oauth_session(account_id: int) -> dict:
             "status": "created",
             "attempts": 0,
             "max_attempts": 3,
+            "proxy_enabled": False,
+            "proxy": None,
             "logs": [],
             "created_at": datetime.utcnow().isoformat(timespec="seconds"),
             "finished_at": None,
@@ -124,10 +130,13 @@ def start_oauth(account_id: int):
 
 
 @router.post("/oauth/microsoft/playwright/{account_id}")
-def start_playwright_oauth(account_id: int):
+def start_playwright_oauth(account_id: int, payload: PlaywrightOAuthRequest):
     session = create_oauth_session(account_id)
     auth_url = session["url"]
-    selected_proxy = pick_playwright_proxy(require_valid=True)
+    selected_proxy = pick_playwright_proxy(require_valid=True) if payload.use_proxy else None
+    with oauth_sessions_lock:
+        oauth_sessions[session["id"]]["proxy_enabled"] = payload.use_proxy
+        oauth_sessions[session["id"]]["proxy"] = sanitize_proxy(selected_proxy)
     root_dir = Path(__file__).resolve().parents[2]
     frontend_dir = root_dir / "frontend"
     script_path = frontend_dir / "scripts" / "open-auth-browser.mjs"
@@ -178,6 +187,7 @@ def start_playwright_oauth(account_id: int):
         "mode": "playwright_manual",
         "account_id": account_id,
         "session_id": session["id"],
+        "proxy_enabled": payload.use_proxy,
         "proxy": sanitize_proxy(selected_proxy),
     }
 
