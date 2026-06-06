@@ -174,15 +174,18 @@ async function handleCommonMicrosoftPrompts(page, rounds = 8) {
   }
 }
 
-log('launching Playwright OAuth browser')
+log('launching Playwright OAuth browser in incognito context')
 
-const context = await chromium.launchPersistentContext(profileDir, {
+const browser = await chromium.launch({
   headless: false,
+})
+
+const context = await browser.newContext({
   proxy,
   viewport: { width: 1280, height: 860 },
 })
 
-const page = context.pages()[0] || await context.newPage()
+const page = await context.newPage()
 await page.goto(authUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
 log('Microsoft OAuth page opened')
 
@@ -210,7 +213,7 @@ page.on('framenavigated', async (frame) => {
   if (url.includes('oauth=success') || url.includes('oauth=failed')) {
     log('OAuth callback reached, closing browser soon')
     setTimeout(async () => {
-      await context.close()
+      await browser.close()
     }, 3000)
   }
 })
