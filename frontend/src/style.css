@@ -70,6 +70,13 @@ button:disabled {
   font-size: 13px;
 }
 
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
 .panel {
   border-top: 1px solid #e5edf3;
   padding-top: 18px;
@@ -218,6 +225,34 @@ textarea {
 .actions {
   display: flex;
   flex-wrap: wrap;
+  gap: 10px;
+}
+
+.output-section {
+  border: 1px solid #d9e2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  margin-bottom: 18px;
+}
+
+.output-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.output-body textarea {
+  min-height: 96px;
+  height: 110px;
+  margin: 0;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  background: #f8fafc;
+}
+
+.output-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -470,4 +505,64 @@ time,
   padding: 30px;
   color: #627386;
   text-align: center;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(23, 32, 42, 0.42);
+  padding: 24px;
+}
+
+.modal {
+  width: min(720px, 100%);
+  border: 1px solid #d9e2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 70px rgba(23, 32, 42, 0.24);
+  padding: 18px;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.modal-head h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.modal-head p {
+  margin: 0;
+  color: #627386;
+  font-size: 13px;
+}
+
+.modal textarea {
+  height: 260px;
+  margin: 0;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.icon-button {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
 }

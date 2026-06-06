@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from .config import get_settings
 from .db import connect
 from .models import AccountOut, ImportAccountsRequest
 
@@ -68,6 +69,26 @@ def import_accounts(payload: ImportAccountsRequest):
                 )
                 created += 1
     return {"parsed": len(parsed), "created": created, "updated": updated}
+
+
+@router.get("/authorized-export")
+def export_authorized_accounts():
+    client_id = get_settings().microsoft_client_id
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT email, password, refresh_token
+            FROM accounts
+            WHERE refresh_token IS NOT NULL AND refresh_token != ''
+            ORDER BY email
+            """
+        ).fetchall()
+
+    lines = [
+        f"{row['email']}----{row['password'] or ''}----{client_id}----{row['refresh_token']}"
+        for row in rows
+    ]
+    return {"count": len(lines), "text": "\n".join(lines)}
 
 
 @router.delete("/{account_id}")

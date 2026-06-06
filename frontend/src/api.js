@@ -27,6 +27,10 @@ export function deleteAccount(accountId) {
   return request(`/api/accounts/${accountId}`, { method: 'DELETE' })
 }
 
+export function exportAuthorizedAccounts() {
+  return request('/api/accounts/authorized-export')
+}
+
 export function listProxies() {
   return request('/api/proxies')
 }

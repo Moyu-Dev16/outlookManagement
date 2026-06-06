@@ -29,6 +29,12 @@ test.beforeEach(async ({ page }) => {
     })
   })
 
+  await page.route('**/api/accounts/authorized-export', async (route) => {
+    await route.fulfill({
+      json: { count: 0, text: '' },
+    })
+  })
+
   await page.route('**/api/accounts/1', async (route) => {
     await route.fulfill({ json: { deleted: true, id: 1 } })
   })
@@ -127,6 +133,8 @@ test('imports an account and displays synced mailbox data', async ({ page }) => 
 
   await expect(page.getByRole('heading', { name: 'Outlook 管理器' })).toBeVisible()
   await page.getByRole('button', { name: '导入账号' }).click()
+  await expect(page.getByRole('heading', { name: '导入账号' })).toBeVisible()
+  await page.getByRole('button', { name: '确认导入' }).click()
 
   await expect(page.getByRole('button', { name: /demo@outlook\.com/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'demo@outlook.com 未授权' })).toBeVisible()

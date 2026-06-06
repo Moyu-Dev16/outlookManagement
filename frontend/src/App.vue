@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   deleteAccount,
   deleteProxy,
+  exportAuthorizedAccounts,
   getOAuthSession,
   getProxyValidationJob,
   importAccounts,
@@ -21,6 +22,10 @@ import {
 const sample = 'account1@outlook.com----password----totp-secret\naccount2@outlook.com----password----totp-secret'
 const importText = ref(sample)
 const proxyText = ref('')
+const importModalOpen = ref(false)
+const importMode = ref('accounts')
+const authorizedOutput = ref('')
+const authorizedOutputCount = ref(0)
 const accounts = ref([])
 const proxies = ref([])
 const folders = ref([])
@@ -59,6 +64,25 @@ function statusText(status) {
   return statusLabels[status] || status || '-'
 }
 
+const importTitle = computed(() => (importMode.value === 'accounts' ? '导入账号' : '导入代理'))
+const importDescription = computed(() =>
+  importMode.value === 'accounts'
+    ? '格式：邮箱----密码----totp_secret'
+    : '格式：host:port:username:password'
+)
+const importModel = computed({
+  get() {
+    return importMode.value === 'accounts' ? importText.value : proxyText.value
+  },
+  set(value) {
+    if (importMode.value === 'accounts') {
+      importText.value = value
+    } else {
+      proxyText.value = value
+    }
+  },
+})
+
 async function run(action, successText) {
   loading.value = true
   error.value = ''
@@ -86,12 +110,27 @@ async function refreshProxies() {
   proxies.value = await listProxies()
 }
 
+function openImport(mode) {
+  importMode.value = mode
+  importModalOpen.value = true
+}
+
+function closeImport() {
+  importModalOpen.value = false
+}
+
 async function submitImport() {
   await run(async () => {
-    const result = await importAccounts(importText.value)
-    await refreshAccounts()
+    if (importMode.value === 'accounts') {
+      const result = await importAccounts(importText.value)
+      await refreshAccounts()
+      return result
+    }
+    const result = await importProxies(proxyText.value, 'http')
+    await refreshProxies()
     return result
-  }, '账号已导入')
+  }, importMode.value === 'accounts' ? '账号已导入' : '代理池已导入')
+  closeImport()
 }
 
 async function removeAccount(account) {
@@ -109,11 +148,26 @@ async function removeAccount(account) {
   }, '账号已删除')
 }
 
-async function submitProxyImport() {
-  await run(async () => {
-    await importProxies(proxyText.value, 'http')
-    await refreshProxies()
-  }, '代理池已导入')
+async function loadAuthorizedOutput(options = {}) {
+  if (options.silent) {
+    const result = await exportAuthorizedAccounts()
+    authorizedOutput.value = result.text || ''
+    authorizedOutputCount.value = result.count || 0
+    return
+  }
+  const result = await run(() => exportAuthorizedAccounts(), '授权输出已刷新')
+  if (!result) return
+  authorizedOutput.value = result.text || ''
+  authorizedOutputCount.value = result.count || 0
+}
+
+async function copyAuthorizedOutput() {
+  if (!authorizedOutput.value) {
+    notice.value = '暂无可复制的授权输出'
+    return
+  }
+  await navigator.clipboard.writeText(authorizedOutput.value)
+  notice.value = '授权输出已复制'
 }
 
 async function removeProxy(proxy) {
@@ -199,6 +253,7 @@ async function refreshOAuthSession() {
     oauthSession.value = session
     oauthLogs.value = session.logs || []
     await refreshAccounts()
+    await loadAuthorizedOutput()
     return session
   }, '授权日志已刷新')
 }
@@ -240,7 +295,7 @@ onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
   if (params.get('oauth') === 'success') notice.value = '授权成功，可以同步邮件了'
   if (params.get('oauth') === 'failed') error.value = '授权失败，请检查后端配置或账号状态'
-  await Promise.all([refreshAccounts(), refreshProxies()])
+  await Promise.all([refreshAccounts(), refreshProxies(), loadAuthorizedOutput({ silent: true })])
 })
 </script>
 
@@ -252,10 +307,9 @@ onMounted(async () => {
         <span>本机版 MVP</span>
       </div>
 
-      <section class="panel">
-        <div class="panel-title">账号导入</div>
-        <textarea v-model="importText" spellcheck="false" />
-        <button class="primary" :disabled="loading" @click="submitImport">导入账号</button>
+      <section class="quick-actions">
+        <button class="primary" :disabled="loading" @click="openImport('accounts')">导入账号</button>
+        <button :disabled="loading" @click="openImport('proxies')">导入代理</button>
       </section>
 
       <section class="panel account-panel">
@@ -274,9 +328,7 @@ onMounted(async () => {
 
       <section class="panel proxy-panel">
         <div class="panel-title">代理池</div>
-        <textarea v-model="proxyText" spellcheck="false" />
         <div class="proxy-actions">
-          <button :disabled="loading" @click="submitProxyImport">导入代理</button>
           <button :disabled="loading || proxyPolling" @click="validateProxies">验证代理</button>
           <span>{{ proxies.length }} 个代理</span>
         </div>
@@ -315,6 +367,25 @@ onMounted(async () => {
 
       <div v-if="notice" class="notice">{{ notice }}</div>
       <div v-if="error" class="error">{{ error }}</div>
+
+      <section class="output-section">
+        <div class="section-head">
+          <h3>授权输出</h3>
+          <span>{{ authorizedOutputCount }} 个已授权账号</span>
+        </div>
+        <div class="output-body">
+          <textarea
+            v-model="authorizedOutput"
+            readonly
+            spellcheck="false"
+            placeholder="授权成功后会生成：user@hotmail.com----密码----client_id----refresh_token"
+          />
+          <div class="output-actions">
+            <button :disabled="loading" @click="loadAuthorizedOutput">刷新输出</button>
+            <button class="primary" :disabled="loading" @click="copyAuthorizedOutput">复制全部</button>
+          </div>
+        </div>
+      </section>
 
       <section v-if="oauthSession" class="auth-log-section">
         <div class="section-head">
@@ -440,5 +511,22 @@ onMounted(async () => {
         </section>
       </div>
     </section>
+
+    <div v-if="importModalOpen" class="modal-backdrop" @click.self="closeImport">
+      <section class="modal">
+        <div class="modal-head">
+          <div>
+            <h3>{{ importTitle }}</h3>
+            <p>{{ importDescription }}</p>
+          </div>
+          <button class="icon-button" @click="closeImport">×</button>
+        </div>
+        <textarea v-model="importModel" spellcheck="false" />
+        <div class="modal-actions">
+          <button @click="closeImport">取消</button>
+          <button class="primary" :disabled="loading" @click="submitImport">确认导入</button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>
