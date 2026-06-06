@@ -13,6 +13,7 @@ import threading
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from .config import get_settings
 from .db import connect
@@ -27,6 +28,10 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 SCOPES = "offline_access User.Read Mail.Read"
 oauth_sessions: dict[str, dict] = {}
 oauth_sessions_lock = threading.Lock()
+
+
+class OAuthSessionLogRequest(BaseModel):
+    message: str
 
 
 def require_ms_config():
@@ -144,7 +149,14 @@ def start_playwright_oauth(account_id: int):
                 auth_url,
                 str(profile_dir),
                 json.dumps(selected_proxy or {}),
-                json.dumps({"accountId": account_id, "email": session["email"], "sessionId": session["id"]}),
+                json.dumps(
+                    {
+                        "accountId": account_id,
+                        "email": session["email"],
+                        "sessionId": session["id"],
+                        "apiBase": "http://127.0.0.1:8000",
+                    }
+                ),
             ],
             **popen_kwargs,
         )
@@ -171,6 +183,15 @@ def get_oauth_session(session_id: str):
         safe = dict(session)
         safe.pop("code_verifier", None)
         return safe
+
+
+@router.post("/oauth/microsoft/sessions/{session_id}/logs")
+def add_oauth_session_log(session_id: str, payload: OAuthSessionLogRequest):
+    with oauth_sessions_lock:
+        if session_id not in oauth_sessions:
+            raise HTTPException(status_code=404, detail="OAuth session not found")
+    append_oauth_log(session_id, payload.message[:1000])
+    return {"ok": True}
 
 
 def pick_playwright_proxy(require_valid: bool = False) -> dict[str, str] | None:
